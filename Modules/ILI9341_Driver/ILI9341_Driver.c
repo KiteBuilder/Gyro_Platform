@@ -10,11 +10,11 @@
 
 #include "ILI9341_Driver.h"
 
-SPI_HandleTypeDef *p_spi; //SPI port for transferring data
-ILI9341_Port *p_cs, *p_dc, *p_rst, *p_led; //CS, DC, RST, LED ports
-bool f_DMA;
+static SPI_HandleTypeDef *p_spi; //SPI port for transferring data
+static ILI9341_Port *p_cs, *p_dc, *p_rst, *p_led; //CS, DC, RST, LED ports
+static bool f_DMA;
 
-uint16_t display_width, display_height; //LCD display width and height that depends on the screen orientation
+static uint16_t display_width, display_height; //LCD display width and height that depends on the screen orientation
 
 static void ILI9341_Reset(void);
 static void ILI9341_WriteCommand(uint8_t);
@@ -25,7 +25,7 @@ static int ILI9341_SetWindow(uint16_t, uint16_t, uint16_t, uint16_t);
 static int ILI9341_SetColors(uint16_t*, uint16_t, bool);
 static void ILI9341_WriteColor(uint32_t, uint16_t);
 
-uint16_t buff[DISPLAY_MAX_BUFFER_SIZE];
+static uint16_t buff[DISPLAY_MAX_BUFFER_SIZE];
 
 /**
   * @brief Initialize TFT display (ILI9341) interfaces

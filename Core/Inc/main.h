@@ -57,6 +57,11 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define TOUCH_CS_Pin GPIO_PIN_0
+#define TOUCH_CS_GPIO_Port GPIOB
+#define TOUCH_INT_Pin GPIO_PIN_1
+#define TOUCH_INT_GPIO_Port GPIOB
+#define TOUCH_INT_EXTI_IRQn EXTI1_IRQn
 #define TFT_DC_Pin GPIO_PIN_8
 #define TFT_DC_GPIO_Port GPIOA
 #define TFT_RST_Pin GPIO_PIN_9
@@ -67,26 +72,6 @@ void Error_Handler(void);
 #define TFT_LED_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
-
-// cleanup BASEPRI restore function, with global memory barrier
-static inline void __basepriRestoreMem(uint8_t *val)
-{
-    __set_BASEPRI(*val);
-}
-
-// set BASEPRI_MAX function, with global memory barrier, returns true
-static inline uint8_t __basepriSetMemRetVal(uint8_t prio)
-{
-    __set_BASEPRI_MAX(prio);
-    return 1;
-}
-
-#define NVIC_PRIO_MAX 1
-#define ATOMIC_BLOCK(prio) for ( uint8_t __basepri_save __attribute__((__cleanup__(__basepriRestoreMem))) = __get_BASEPRI(), \
-                                     __ToDo = __basepriSetMemRetVal((prio) << (8U - __NVIC_PRIO_BITS)); __ToDo ; __ToDo = 0 )
-
-typedef uint32_t timeMs_t;
-typedef uint64_t timeUs_t;
 
 /* USER CODE END Private defines */
 

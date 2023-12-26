@@ -82,6 +82,15 @@ void Graph_DynamicDraw(int16_t data, graph_t *graph)
         ILI9341_DrawLine(graph->p_buff[graph->n_sample].x, graph->p_buff[graph->n_sample].y, graph->p_buff[graph->n_sample + 1].x, graph->p_buff[graph->n_sample + 1].y, graph->back_color);
     }
 
+    if (data > graph->max_y)
+    {
+        data = graph->max_y;
+    }
+    else if (data < graph->min_y)
+    {
+        data = graph->min_y;
+    }
+
     graph->p_buff[graph->n_sample] = Graph_CalcXY(graph->graph_wnd, graph->n_sample, data, graph->min_y, graph->max_y);
 
     if (graph->n_sample != 0)

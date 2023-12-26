@@ -9,7 +9,6 @@
 #define FILTER_H_
 
 #define US2S(us)    ((us) * 1e-6f)
-#define TASK_PERIOD_HZ(hz) (1000000 / (hz))
 
 typedef struct pt1Filter_s {
     float state;
