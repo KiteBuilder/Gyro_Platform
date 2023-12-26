@@ -75,7 +75,7 @@ static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
-static void Init_GraphInterface();
+static void InitGraphInterface();
 static void GraphsAndTextUpdate(timeDelta_t);
 /* USER CODE END PFP */
 
@@ -167,7 +167,7 @@ int main(void)
 
   Touch_Set_Interface(&hspi1, &touch_cs, &touch_int);
 
-  Init_GraphInterface();
+  InitGraphInterface();
 
   HAL_TIM_Base_Start_IT(&htim10);
 
@@ -524,7 +524,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   * @brief  To draw two windows for the Graphs
   * @retval None
   */
-static void Init_GraphInterface()
+static void InitGraphInterface()
 {
     char str[32];
     const uint16_t wnd_height = 130;
