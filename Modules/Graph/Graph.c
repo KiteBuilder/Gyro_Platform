@@ -69,7 +69,7 @@ void Graph_InitDynamic(rect_t *wnd, graph_t *graph, int16_t min_y, int16_t max_y
   * @param None
   * @retval None
   */
-void Graph_DynamicDraw(int16_t data, graph_t *graph)
+void Graph_DynamicDraw(int16_t data, graph_t *graph, bool fScan)
 {
     if (graph->n_sample == graph->max_sample)
     {
@@ -98,8 +98,11 @@ void Graph_DynamicDraw(int16_t data, graph_t *graph)
         ILI9341_DrawLine(graph->p_buff[graph->n_sample - 1].x, graph->p_buff[graph->n_sample - 1].y, graph->p_buff[graph->n_sample].x, graph->p_buff[graph->n_sample].y, graph->color);
 
         //To draw the update marker line
-        ILI9341_DrawLine(graph->p_buff[graph->n_sample].x + 1, graph->graph_wnd.top, graph->p_buff[graph->n_sample].x + 1, graph->graph_wnd.bottom, graph->back_color);
-        ILI9341_DrawLine(graph->p_buff[graph->n_sample].x + 2, graph->graph_wnd.top, graph->p_buff[graph->n_sample].x + 2, graph->graph_wnd.bottom, graph->color);
+        if (fScan == true)
+        {
+            ILI9341_DrawLine(graph->p_buff[graph->n_sample].x + 1, graph->graph_wnd.top, graph->p_buff[graph->n_sample].x + 1, graph->graph_wnd.bottom, graph->back_color);
+            ILI9341_DrawLine(graph->p_buff[graph->n_sample].x + 2, graph->graph_wnd.top, graph->p_buff[graph->n_sample].x + 2, graph->graph_wnd.bottom, graph->color);
+        }
     }
 
     ++graph->n_sample;

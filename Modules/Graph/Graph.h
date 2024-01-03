@@ -41,7 +41,7 @@ typedef struct _graph_st_
 
 point_t Graph_CalcXY(rect_t, uint16_t, int16_t, int16_t, int16_t);
 void Graph_Draw(int16_t*, uint16_t, uint16_t, rect_t, uint16_t);
-void Graph_DynamicDraw(int16_t, graph_t*);
+void Graph_DynamicDraw(int16_t, graph_t*, bool);
 void Graph_InitDynamic(rect_t*, graph_t*, int16_t, int16_t, uint16_t, uint16_t);
 
 

@@ -57,7 +57,9 @@
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 DMA_HandleTypeDef hdma_spi2_tx;
+
 TIM_HandleTypeDef htim10;
+
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
@@ -108,13 +110,13 @@ ILI9341_FontDef Font_16x26 = {16, 26, Font16x26, 32, 126};
 rect_t vBat_wnd, iBat_wnd, resBat_wnd;
 point_t vBat_hdr, iBat_hdr, resBat_hdr;
 
-graph_t vBat_graph, iBat_graph, resBat_graph;
+graph_t vBat_graph, iBat_graph, iFilt_graph, resBat_graph;
 
 pt1Filter_t filter;
 
 bool f_touch;
 uint16_t guard_cnt;
-const uint16_t guard_threshold = 20;
+const uint16_t guard_threshold = 500;
 uint16_t x, y;
 
 float fltData[RX_MAX_CNT/sizeof(float)];
@@ -191,7 +193,10 @@ int main(void)
       if (f_touch == true)
       {
           f_touch = false;
-          Touch_Get_Coordinates(&x, &y);
+
+          //char str[256];
+          //sprintf(str, "X:%05d Y:%05d", x, y);
+          //ILI9341_WriteString(str, Font_11x18, 50, 100, Yellow, Black);
       }
 
     /* USER CODE END WHILE */
@@ -280,7 +285,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -444,7 +449,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : TOUCH_INT_Pin */
   GPIO_InitStruct.Pin = TOUCH_INT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(TOUCH_INT_GPIO_Port, &GPIO_InitStruct);
 
@@ -511,13 +516,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         {
             if (HAL_GPIO_ReadPin(touch_int.gpio, touch_int.pin) == GPIO_PIN_RESET)
             {
+                Touch_Get_Coordinates(&x, &y, true);
                 f_touch = true;
-                guard_cnt =  guard_threshold;
-
             }
+
+            guard_cnt =  guard_threshold;
         }
     }
-
 }
 
 /**
@@ -546,6 +551,7 @@ static void InitGraphInterface()
     iBat_wnd.top    = y_offset;
     iBat_wnd.right  = 318;
     iBat_wnd.bottom = iBat_wnd.top + wnd_height;
+    Graph_InitDynamic(&iBat_wnd, &iFilt_graph, 0, 3000, Yellow, Black);
     Graph_InitDynamic(&iBat_wnd, &iBat_graph, 0, 3000, Red, Black);
 
     vBat_wnd.left   = 1;
@@ -570,13 +576,15 @@ static void GraphsAndTextUpdate(timeDelta_t dT)
     char str[32];
     point_t point;
     uint16_t data;
+    char sign;
 
     //IBat
     pt1FilterApply4(&filter, fltData[0], 0.5,US2S(dT));
 
     point.x = 0; point.y = Font_16x26.height + 5;
-    data = (uint16_t)(filter.state * 100);
-    sprintf(str, "I%2d.%02d", data/100, data % 100);
+    data = (uint16_t)(fabs(filter.state) * 100);
+    sign  = (filter.state < 0) ? '-': '+';
+    sprintf(str, "I%c%2d.%02d", sign, data/100, data % 100);
     ILI9341_WriteString(str, Font_16x26, point.x, point.y, Red, Black);
 
     //vBat
@@ -587,30 +595,35 @@ static void GraphsAndTextUpdate(timeDelta_t dT)
 
     //Battery Impedance
     point.x = Font_16x26.width * 6; point.y = 0;
-    data = (uint16_t)roundf(fltData[4] * 10000);
+    data = (uint16_t)(fltData[4] * 10000);
     sprintf(str, "R%3d.%1d", data/10, data % 10);
     ILI9341_WriteString(str, Font_16x26, point.x, point.y, Blue, Black);
 
     //Capacity mAh
-    point.x = Font_16x26.width * 7; point.y = Font_16x26.height + 5;
-    data = (uint16_t)roundf(fltData[2] * 10);
-    sprintf(str, "%4d.%1dmAh", data/10, data % 10);
+    point.x = Font_16x26.width * 8; point.y = Font_16x26.height + 5;
+    sign  = (fltData[2] < 0) ? '-': '+';
+    data = (uint16_t)(fabs(fltData[2]) * 10);
+    sprintf(str, "%c%4d.%1dmAh", sign, data/10, data % 10);
     ILI9341_WriteString(str, Font_16x26, point.x, point.y, Orange, Black);
 
     //Capacity Wh
     point.x = Font_16x26.width * 12; point.y = 0;
-    data = (uint16_t)roundf(fltData[3] * 100);
-    sprintf(str, "%3d.%1dWh", data/100, data % 10);
+    sign  = (fltData[3] < 0) ? '-': '+';
+    data = (uint16_t)(fabs(fltData[3]) * 100);
+    sprintf(str, "%c%2d.%02dWh", sign, data/100, data % 100);
     ILI9341_WriteString(str, Font_16x26, point.x, point.y, Magenta, Black);
 
+    int16_t iFilt_int = (int16_t)(filter.state * 100);
+    Graph_DynamicDraw(iFilt_int, &iFilt_graph, false);
+
     int16_t iBat_int = (int16_t)(fltData[0] * 100);
-    Graph_DynamicDraw(iBat_int, &iBat_graph);
+    Graph_DynamicDraw(iBat_int, &iBat_graph, true);
 
     int16_t vBat_int = (int16_t)(fltData[1] * 10);
-    Graph_DynamicDraw(vBat_int, &vBat_graph);
+    Graph_DynamicDraw(vBat_int, &vBat_graph, true);
 
     int16_t resBat_int = (int16_t)(fltData[4] * 1000);
-    Graph_DynamicDraw(resBat_int, &resBat_graph);
+    Graph_DynamicDraw(resBat_int, &resBat_graph, true);
 }
 
 /* USER CODE END 4 */
