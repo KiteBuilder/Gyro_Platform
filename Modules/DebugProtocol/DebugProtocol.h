@@ -10,7 +10,7 @@
 
 #include "stm32f4xx_hal.h"
 
-#define RX_MAX_CNT 32
+#define RX_MAX_CNT 64
 
 //*****************************************************************************
 //DLE-ETX protocol

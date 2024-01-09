@@ -58,8 +58,6 @@ SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 DMA_HandleTypeDef hdma_spi2_tx;
 
-TIM_HandleTypeDef htim10;
-
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
@@ -71,11 +69,9 @@ timeUs_t currentTimeUs = 0, previousTimeUs = 0;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
-static void MX_TIM10_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
-static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 static void InitGraphInterface();
 static void GraphsAndTextUpdate(timeDelta_t);
@@ -107,10 +103,10 @@ ILI9341_FontDef Font_11x18 = {11, 18, Font11x18, 32, 126};
 ILI9341_FontDef Font_16x26 = {16, 26, Font16x26, 32, 126};
 #endif
 
-rect_t vBat_wnd, iBat_wnd, resBat_wnd;
+rect_t vBat_wnd, iBat_wnd, resBat_wnd, text_wnd;
 point_t vBat_hdr, iBat_hdr, resBat_hdr;
 
-graph_t vBat_graph, iBat_graph, iFilt_graph, resBat_graph;
+graph_t vBat_graph, iBat_graph, iFilt_graph, resBat_graph, vSag_graph;
 
 pt1Filter_t filter;
 
@@ -118,6 +114,7 @@ bool f_touch;
 uint16_t guard_cnt;
 const uint16_t guard_threshold = 500;
 uint16_t x, y;
+uint8_t txt_wnd_num;
 
 float fltData[RX_MAX_CNT/sizeof(float)];
 
@@ -132,6 +129,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
   f_touch = false;
   guard_cnt = 0;
+  txt_wnd_num = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -153,13 +151,9 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_TIM10_Init();
   MX_SPI2_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
-
-  /* Initialize interrupts */
-  MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
   ILI9341_Set_Interface(&hspi2, true, &cs, &dc, &rst, &led);
   ILI9341_BackLight(true);
@@ -170,8 +164,6 @@ int main(void)
   Touch_Set_Interface(&hspi1, &touch_cs, &touch_int);
 
   InitGraphInterface();
-
-  HAL_TIM_Base_Start_IT(&htim10);
 
   /* USER CODE END 2 */
 
@@ -194,9 +186,14 @@ int main(void)
       {
           f_touch = false;
 
-          //char str[256];
-          //sprintf(str, "X:%05d Y:%05d", x, y);
-          //ILI9341_WriteString(str, Font_11x18, 50, 100, Yellow, Black);
+          if (y < text_wnd.bottom)
+          {
+              ILI9341_DrawFillRectangle(text_wnd.left, text_wnd.top, text_wnd.right, text_wnd.bottom, Black);
+             if (++txt_wnd_num > 1)
+             {
+                 txt_wnd_num = 0;
+             }
+          }
       }
 
     /* USER CODE END WHILE */
@@ -249,17 +246,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-}
-
-/**
-  * @brief NVIC Configuration.
-  * @retval None
-  */
-static void MX_NVIC_Init(void)
-{
-  /* TIM1_UP_TIM10_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(TIM1_UP_TIM10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(TIM1_UP_TIM10_IRQn);
 }
 
 /**
@@ -335,37 +321,6 @@ static void MX_SPI2_Init(void)
   /* USER CODE BEGIN SPI2_Init 2 */
 
   /* USER CODE END SPI2_Init 2 */
-
-}
-
-/**
-  * @brief TIM10 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM10_Init(void)
-{
-
-  /* USER CODE BEGIN TIM10_Init 0 */
-
-  /* USER CODE END TIM10_Init 0 */
-
-  /* USER CODE BEGIN TIM10_Init 1 */
-
-  /* USER CODE END TIM10_Init 1 */
-  htim10.Instance = TIM10;
-  htim10.Init.Prescaler = 24;
-  htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim10.Init.Period = 999;
-  htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim10) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM10_Init 2 */
-
-  /* USER CODE END TIM10_Init 2 */
 
 }
 
@@ -461,7 +416,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 8, 0);
   HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -489,18 +444,6 @@ void HAL_SYSTICK_Callback()
     if(guard_cnt != 0)
     {
         --guard_cnt;
-    }
-}
-
-/**
-  * @brief Timer tim10 elapsed period callback
-  * @retval None
-  */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    if(htim->Instance == TIM10)
-    {
-
     }
 }
 
@@ -558,6 +501,7 @@ static void InitGraphInterface()
     vBat_wnd.top    = iBat_wnd.bottom + 5;
     vBat_wnd.right  = 318;
     vBat_wnd.bottom = vBat_wnd.top + wnd_height;
+    Graph_InitDynamic(&vBat_wnd, &vSag_graph, 150, 300, Cyan, Black);
     Graph_InitDynamic(&vBat_wnd, &vBat_graph, 150, 300, Green, Black);
 
     resBat_wnd.left   = 1;
@@ -565,6 +509,8 @@ static void InitGraphInterface()
     resBat_wnd.right  = 318;
     resBat_wnd.bottom = resBat_wnd.top + wnd_height;
     Graph_InitDynamic(&resBat_wnd, &resBat_graph, 0, 150, Blue, Black);
+
+    text_wnd.left = 0; text_wnd.right = 320; text_wnd.top = 0; text_wnd.bottom = Font_16x26.height * 2;
 }
 
 /**
@@ -587,37 +533,70 @@ static void GraphsAndTextUpdate(timeDelta_t dT)
     sprintf(str, "I%c%2d.%02d", sign, data/100, data % 100);
     ILI9341_WriteString(str, Font_16x26, point.x, point.y, Red, Black);
 
-    //vBat
-    point.x = 0; point.y = 0;
-    data = (uint16_t)(fltData[1] * 10);
-    sprintf(str, "V%2d.%1d", data/10, data % 10);
-    ILI9341_WriteString(str, Font_16x26, point.x, point.y, Green, Black);
+    if (txt_wnd_num == 0)
+    {
+        //vBat
+        point.x = 0; point.y = 0;
+        data = (uint16_t)(fltData[1] * 10);
+        sprintf(str, "V%2d.%1d", data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Green, Black);
 
-    //Battery Impedance
-    point.x = Font_16x26.width * 6; point.y = 0;
-    data = (uint16_t)(fltData[4] * 10000);
-    sprintf(str, "R%3d.%1d", data/10, data % 10);
-    ILI9341_WriteString(str, Font_16x26, point.x, point.y, Blue, Black);
+        //Battery Impedance
+        point.x = Font_16x26.width * 6; point.y = 0;
+        data = (uint16_t)(fltData[4] * 10000);
+        sprintf(str, "R%3d.%1d", data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Blue, Black);
 
-    //Capacity mAh
-    point.x = Font_16x26.width * 8; point.y = Font_16x26.height + 5;
-    sign  = (fltData[2] < 0) ? '-': '+';
-    data = (uint16_t)(fabs(fltData[2]) * 10);
-    sprintf(str, "%c%4d.%1dmAh", sign, data/10, data % 10);
-    ILI9341_WriteString(str, Font_16x26, point.x, point.y, Orange, Black);
+        //Capacity mAh
+        point.x = Font_16x26.width * 8; point.y = Font_16x26.height + 5;
+        sign  = (fltData[2] < 0) ? '-': '+';
+        data = (uint16_t)(fabs(fltData[2]) * 10);
+        sprintf(str, "%c%4d.%1dmAh", sign, data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Orange, Black);
 
-    //Capacity Wh
-    point.x = Font_16x26.width * 12; point.y = 0;
-    sign  = (fltData[3] < 0) ? '-': '+';
-    data = (uint16_t)(fabs(fltData[3]) * 100);
-    sprintf(str, "%c%2d.%02dWh", sign, data/100, data % 100);
-    ILI9341_WriteString(str, Font_16x26, point.x, point.y, Magenta, Black);
+        //Capacity Wh
+        point.x = Font_16x26.width * 12; point.y = 0;
+        sign  = (fltData[3] < 0) ? '-': '+';
+        data = (uint16_t)(fabs(fltData[3]) * 100);
+        sprintf(str, "%c%2d.%02dWh", sign, data/100, data % 100);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Magenta, Black);
+    }
+    else
+    {
+        //vRest
+        point.x = 0; point.y = 0;
+        data = (uint16_t)(fltData[7] * 10);
+        sprintf(str, "V%2d.%1d", data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Yellow, Black);
+
+        //Battery temperature
+        point.x = Font_16x26.width * 6; point.y = 0;
+        data = (uint16_t)(fltData[8] * 10);
+        sprintf(str, "t%2d.%1d", data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Olive, Black);
+
+        //Capacity module
+        point.x = Font_16x26.width * 13; point.y = 0;
+        data = (uint16_t)(fabs(fltData[6]) * 10);
+        sprintf(str, "M%4d.%1d", data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Purple, Black);
+
+        //Remaining capacity mAh
+        point.x = Font_16x26.width * 8; point.y = Font_16x26.height + 5;
+        sign  = (fltData[5] < 0) ? '-': '+';
+        data = (uint16_t)(fabs(fltData[5]) * 10);
+        sprintf(str, "%c%4d.%1dmAh", sign, data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Cyan, Black);
+    }
 
     int16_t iFilt_int = (int16_t)(filter.state * 100);
     Graph_DynamicDraw(iFilt_int, &iFilt_graph, false);
 
     int16_t iBat_int = (int16_t)(fltData[0] * 100);
     Graph_DynamicDraw(iBat_int, &iBat_graph, true);
+
+    int16_t vSag_int = (int16_t)(fltData[7] * 10);
+    Graph_DynamicDraw(vSag_int, &vSag_graph, false);
 
     int16_t vBat_int = (int16_t)(fltData[1] * 10);
     Graph_DynamicDraw(vBat_int, &vBat_graph, true);
