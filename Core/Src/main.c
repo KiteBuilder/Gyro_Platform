@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -25,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 #define ILI9341_INCLUDE_FONT_6x8
 #define ILI9341_INCLUDE_FONT_7x10
@@ -40,7 +42,15 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct
+{
+    FATFS FatFs;         //Fatfs handle
+    FIL fil;             //file handle
+    uint16_t findex;     //file index
+    char fname[16];      //file name
+    FRESULT status;         //OK - true, ERROR - false
+    uint32_t numRecords; //records counter
+} file_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -56,6 +66,7 @@
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
+SPI_HandleTypeDef hspi3;
 DMA_HandleTypeDef hdma_spi2_tx;
 
 UART_HandleTypeDef huart1;
@@ -70,11 +81,15 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI2_Init(void);
-static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_SPI1_Init(void);
+static void MX_SPI3_Init(void);
 /* USER CODE BEGIN PFP */
 static void InitGraphInterface();
-static void GraphsAndTextUpdate(timeDelta_t);
+static void GraphsAndTextUpdate(timeDelta_t, float*);
+static void InitFileSystem(file_t*);
+static void FileDataUpdate(file_t *file, timeUs_t time, float*);
+static void FileSync(file_t*);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -110,13 +125,23 @@ graph_t vBat_graph, iBat_graph, iFilt_graph, resBat_graph, vSag_graph;
 
 pt1Filter_t filter;
 
-bool f_touch;
-uint16_t guard_cnt;
+bool f_touch = false;
+uint16_t guard_cnt = 0;
 const uint16_t guard_threshold = 500;
 uint16_t x, y;
-uint8_t txt_wnd_num;
+uint8_t txt_wnd_num = 0;
 
-float fltData[RX_MAX_CNT/sizeof(float)];
+const uint16_t data_num = 9;
+float fltData[RX_MAX_CNT/sizeof(float)] = {0.0};
+
+file_t file;
+const uint16_t samples_threshold = 50; //to save the every 50 sample
+float fltDataAvg[RX_MAX_CNT/sizeof(float)] = {0.0};
+uint16_t samples_cnt = 0;
+
+bool f_syncFile = false;
+uint16_t syncFile_cnt = 0;
+const uint16_t sync_period = 5000; //sync file period in milliseconds
 
 /* USER CODE END 0 */
 
@@ -127,9 +152,7 @@ float fltData[RX_MAX_CNT/sizeof(float)];
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  f_touch = false;
-  guard_cnt = 0;
-  txt_wnd_num = 0;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -152,8 +175,10 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI2_Init();
-  MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_SPI1_Init();
+  MX_SPI3_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   ILI9341_Set_Interface(&hspi2, true, &cs, &dc, &rst, &led);
   ILI9341_BackLight(true);
@@ -172,6 +197,8 @@ int main(void)
 
   Debug_InitProtocol(&huart1, fltData);
 
+  InitFileSystem(&file);
+
   while (1)
   {
       if (Debug_IsRxready())
@@ -179,7 +206,31 @@ int main(void)
           currentTimeUs = micros();
           timeDelta_t dT = currentTimeUs - previousTimeUs;
           previousTimeUs = currentTimeUs;
-          GraphsAndTextUpdate(dT);
+          GraphsAndTextUpdate(dT, fltData);
+
+
+          for (uint32_t i = 0; i < data_num; i++)
+          {
+              fltDataAvg[i] += fltData[i];
+          }
+
+
+          if (++samples_cnt == samples_threshold)
+          {
+              samples_cnt = 0;
+
+              for (uint32_t i = 0; i < data_num; i++)
+              {
+                  fltDataAvg[i] /= samples_threshold;
+              }
+
+              FileDataUpdate(&file, currentTimeUs, fltDataAvg);
+
+              for (uint32_t i = 0; i < data_num; i++)
+              {
+                  fltDataAvg[i] = 0;
+              }
+          }
       }
 
       if (f_touch == true)
@@ -194,6 +245,17 @@ int main(void)
                  txt_wnd_num = 0;
              }
           }
+          else if (y > resBat_wnd.top)
+          {
+              uint8_t bt = 'R'; //Send reset signal to the host
+              HAL_UART_Transmit_IT(&huart1, &bt, 1);
+          }
+      }
+
+      if (f_syncFile == true)
+      {
+          f_syncFile = false;
+          FileSync(&file);
       }
 
     /* USER CODE END WHILE */
@@ -325,6 +387,44 @@ static void MX_SPI2_Init(void)
 }
 
 /**
+  * @brief SPI3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI3_Init(void)
+{
+
+  /* USER CODE BEGIN SPI3_Init 0 */
+
+  /* USER CODE END SPI3_Init 0 */
+
+  /* USER CODE BEGIN SPI3_Init 1 */
+
+  /* USER CODE END SPI3_Init 1 */
+  /* SPI3 parameter configuration*/
+  hspi3.Instance = SPI3;
+  hspi3.Init.Mode = SPI_MODE_MASTER;
+  hspi3.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi3.Init.NSS = SPI_NSS_SOFT;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
+  hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi3.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI3_Init 2 */
+
+  /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -390,7 +490,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(TOUCH_CS_GPIO_Port, TOUCH_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, TOUCH_CS_Pin|SD_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, TFT_DC_Pin|TFT_RST_Pin|TFT_CS_Pin|TFT_LED_Pin, GPIO_PIN_SET);
@@ -414,6 +514,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SD_CS_Pin */
+  GPIO_InitStruct.Pin = SD_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(SD_CS_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI1_IRQn, 8, 0);
@@ -444,6 +551,12 @@ void HAL_SYSTICK_Callback()
     if(guard_cnt != 0)
     {
         --guard_cnt;
+    }
+
+    if (++syncFile_cnt == sync_period)
+    {
+        syncFile_cnt = 0;
+        f_syncFile = true;
     }
 }
 
@@ -517,7 +630,7 @@ static void InitGraphInterface()
   * @brief  To plot graphs and update text information
   * @retval None
   */
-static void GraphsAndTextUpdate(timeDelta_t dT)
+static void GraphsAndTextUpdate(timeDelta_t dT, float *flt_data)
 {
     char str[32];
     point_t point;
@@ -603,6 +716,136 @@ static void GraphsAndTextUpdate(timeDelta_t dT)
 
     int16_t resBat_int = (int16_t)(fltData[4] * 1000);
     Graph_DynamicDraw(resBat_int, &resBat_graph, true);
+}
+
+/**
+  * @brief  Initialize a file system and create a file
+  * @retval None
+  */
+static void InitFileSystem(file_t *file)
+{
+    DIR dir;
+    FILINFO finfo;
+    char str[256];
+
+    file->findex = 0;
+
+    file->status = f_mount(&file->FatFs, "", 1);
+
+    while (file->status == FR_OK)
+    {
+        sprintf(file->fname, "log%d.txt", file->findex);
+        file->status = f_findfirst(&dir, &finfo, "", file->fname);
+        if (file->status == FR_OK && finfo.fname[0] == 0)
+        {
+            file->status = f_open(&file->fil, file->fname, FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS);
+            break;
+        }
+        else
+        {
+            ++file->findex;
+        }
+    }
+
+    if (file->status == FR_OK)
+    {
+        sprintf(str, "    N:         T(ms):    U(V): Usag(V):      I(A):  ESR(mO):   Temp(C):     Q(mAh):     E(Wh):  Qrem(mAh): Qmod(mAh):\r\n");
+
+        uint32_t bytesWrote;
+        file->status = f_write(&file->fil, str, strlen(str), (UINT*)&bytesWrote);
+        file->numRecords = 0;
+    }
+}
+
+/**
+  * @brief  Update file
+  * @retval None
+  */
+static void FileDataUpdate(file_t *file, timeUs_t time, float *fltData)
+{
+    char str[32];
+    char buf[256];
+    uint16_t data;
+    char sign;
+
+    uint32_t bytesWrote;
+
+    if (file->status != FR_OK)
+    {
+        return;
+    }
+
+    sprintf(buf, "%06ld     ", ++file->numRecords);
+
+    sprintf(str, "%010ld     ", (uint32_t)(time/1000));
+    strcat(buf, str);
+
+    //vBat
+    data = (uint16_t)(fltData[1] * 10);
+    sprintf(str, "%2d.%1d     ", data/10, data % 10);
+    strcat(buf, str);
+
+    //vRest
+    data = (uint16_t)(fltData[7] * 10);
+    sprintf(str, "%2d.%1d     ", data/10, data % 10);
+    strcat(buf, str);
+
+    //iBat
+    data = (uint16_t)(fabs(fltData[0]) * 100);
+    sign  = (fltData[0] < 0) ? '-': '+';
+    sprintf(str, "%c%2d.%02d     ", sign, data/100, data % 100);
+    strcat(buf, str);
+
+    //Battery Impedance
+    data = (uint16_t)(fltData[4] * 10000);
+    sprintf(str, "%3d.%1d     ", data/10, data % 10);
+    strcat(buf, str);
+
+    //Battery temperature
+    sign  = (fltData[8] < 0) ? '-': '+';
+    data = (uint16_t)(fltData[8] * 10);
+    sprintf(str, "%c%3d.%1d     ", sign, data/10, data % 10);
+    strcat(buf, str);
+
+    //Capacity mAh
+    sign  = (fltData[2] < 0) ? '-': '+';
+    data = (uint16_t)(fabs(fltData[2]) * 10);
+    sprintf(str, "%c%4d.%1d     ", sign, data/10, data % 10);
+    strcat(buf, str);
+
+    //Capacity Wh
+    sign  = (fltData[3] < 0) ? '-': '+';
+    data = (uint16_t)(fabs(fltData[3]) * 100);
+    sprintf(str, "%c%2d.%02d     ", sign, data/100, data % 100);
+    strcat(buf, str);
+
+    //Remaining capacity mAh
+    sign  = (fltData[5] < 0) ? '-': '+';
+    data = (uint16_t)(fabs(fltData[5]) * 10);
+    sprintf(str, "%c%4d.%1d     ", sign, data/10, data % 10);
+    strcat(buf, str);
+
+    //Capacity module
+    data = (uint16_t)(fabs(fltData[6]) * 10);
+    sprintf(str, "%4d.%1d     ", data/10, data % 10);
+    strcat(buf, str);
+
+    sprintf(str, "\r\n");
+    strcat(buf, str);
+
+    file->status = f_write(&file->fil, buf, strlen(buf), (UINT*)&bytesWrote);
+}
+
+/**
+  * @brief  Sync file
+  * @retval None
+  */
+static void FileSync(file_t* file)
+{
+    if (file->status == FR_OK)
+    {
+        file->status = f_sync(&file->fil);
+    }
 }
 
 /* USER CODE END 4 */

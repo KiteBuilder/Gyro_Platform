@@ -70,8 +70,11 @@ void Error_Handler(void);
 #define TFT_CS_GPIO_Port GPIOA
 #define TFT_LED_Pin GPIO_PIN_11
 #define TFT_LED_GPIO_Port GPIOA
+#define SD_CS_Pin GPIO_PIN_6
+#define SD_CS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
+#define SD_SPI_HANDLE hspi3
 
 /* USER CODE END Private defines */
 
