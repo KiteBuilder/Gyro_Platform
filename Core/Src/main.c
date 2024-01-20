@@ -131,7 +131,7 @@ const uint16_t guard_threshold = 500;
 uint16_t x, y;
 uint8_t txt_wnd_num = 0;
 
-const uint16_t data_num = 9;
+const uint16_t data_num = 10;
 float fltData[RX_MAX_CNT/sizeof(float)] = {0.0};
 
 file_t file;
@@ -143,6 +143,7 @@ bool f_syncFile = false;
 uint16_t syncFile_cnt = 0;
 const uint16_t sync_period = 5000; //sync file period in milliseconds
 
+bool first_filter_load = true;
 /* USER CODE END 0 */
 
 /**
@@ -206,14 +207,13 @@ int main(void)
           currentTimeUs = micros();
           timeDelta_t dT = currentTimeUs - previousTimeUs;
           previousTimeUs = currentTimeUs;
-          GraphsAndTextUpdate(dT, fltData);
-
 
           for (uint32_t i = 0; i < data_num; i++)
           {
               fltDataAvg[i] += fltData[i];
           }
 
+          GraphsAndTextUpdate(dT, fltData);
 
           if (++samples_cnt == samples_threshold)
           {
@@ -634,71 +634,77 @@ static void GraphsAndTextUpdate(timeDelta_t dT, float *flt_data)
 {
     char str[32];
     point_t point;
-    uint16_t data;
+    uint32_t data;
     char sign;
 
     //IBat
-    pt1FilterApply4(&filter, fltData[0], 0.5,US2S(dT));
+    if (first_filter_load == true)
+    {
+        first_filter_load = false;
+        filter.state = fltData[0];
+    }
+    pt1FilterApply4(&filter, fltData[0], 0.5, US2S(dT));
 
     point.x = 0; point.y = Font_16x26.height + 5;
-    data = (uint16_t)(fabs(filter.state) * 100);
-    sign  = (filter.state < 0) ? '-': '+';
-    sprintf(str, "I%c%2d.%02d", sign, data/100, data % 100);
+    data = (uint32_t)(fabs(filter.state) * 100);
+    sign  = (filter.state < 0) ? '-': ' ';
+    sprintf(str, "I%c%2lu.%02lu", sign, data/100, data % 100);
     ILI9341_WriteString(str, Font_16x26, point.x, point.y, Red, Black);
 
     if (txt_wnd_num == 0)
     {
         //vBat
         point.x = 0; point.y = 0;
-        data = (uint16_t)(fltData[1] * 10);
-        sprintf(str, "V%2d.%1d", data/10, data % 10);
+        data = (uint32_t)(fltData[1] * 10);
+        sprintf(str, "V%2lu.%1lu", data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Green, Black);
 
         //Battery Impedance
         point.x = Font_16x26.width * 6; point.y = 0;
-        data = (uint16_t)(fltData[4] * 10000);
-        sprintf(str, "R%3d.%1d", data/10, data % 10);
+        data = (uint32_t)(fltData[4] * 10000);
+        sprintf(str, "R%3lu.%1lu", data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Blue, Black);
 
         //Capacity mAh
         point.x = Font_16x26.width * 8; point.y = Font_16x26.height + 5;
-        sign  = (fltData[2] < 0) ? '-': '+';
-        data = (uint16_t)(fabs(fltData[2]) * 10);
-        sprintf(str, "%c%4d.%1dmAh", sign, data/10, data % 10);
+        sign  = (fltData[2] < 0) ? '-': ' ';
+        data = (uint32_t)(fabs(fltData[2]) * 10);
+        sprintf(str, "%c%4lu.%1lumAh", sign, data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Orange, Black);
 
         //Capacity Wh
         point.x = Font_16x26.width * 12; point.y = 0;
-        sign  = (fltData[3] < 0) ? '-': '+';
-        data = (uint16_t)(fabs(fltData[3]) * 100);
-        sprintf(str, "%c%2d.%02dWh", sign, data/100, data % 100);
+        sign  = (fltData[3] < 0) ? '-': ' ';
+        data = (uint32_t)(fabs(fltData[3]) * 100);
+        sprintf(str, "%c%2lu.%02luWh", sign, data/100, data % 100);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Magenta, Black);
     }
     else
     {
         //vRest
         point.x = 0; point.y = 0;
-        data = (uint16_t)(fltData[7] * 10);
-        sprintf(str, "V%2d.%1d", data/10, data % 10);
+        data = (uint32_t)(fltData[7] * 10);
+        sprintf(str, "V%2lu.%1lu", data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Yellow, Black);
 
         //Battery temperature
         point.x = Font_16x26.width * 6; point.y = 0;
-        data = (uint16_t)(fltData[8] * 10);
-        sprintf(str, "t%2d.%1d", data/10, data % 10);
+        sign  = (fltData[8] < 0) ? '-': ' ';
+        data = (uint32_t)(fabs(fltData[8]) * 10);
+        sprintf(str, "t%c%2lu.%1lu", sign, data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Olive, Black);
 
         //Capacity module
         point.x = Font_16x26.width * 13; point.y = 0;
-        data = (uint16_t)(fabs(fltData[6]) * 10);
-        sprintf(str, "M%4d.%1d", data/10, data % 10);
+        data = (uint32_t)(fabs(fltData[6]) * 10);
+        sprintf(str, "M%4lu.%1lu", data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Purple, Black);
 
         //Remaining capacity mAh
         point.x = Font_16x26.width * 8; point.y = Font_16x26.height + 5;
-        sign  = (fltData[5] < 0) ? '-': '+';
-        data = (uint16_t)(fabs(fltData[5]) * 10);
-        sprintf(str, "%c%4d.%1dmAh", sign, data/10, data % 10);
+        sign  = (fltData[5] < 0) ? '-': ' ';
+        data = (uint32_t)(fabs(fltData[5]) * 10);
+        sprintf(str, "%c%4lu.%1lumAh", sign, data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Cyan, Black);
     }
 
@@ -749,7 +755,7 @@ static void InitFileSystem(file_t *file)
 
     if (file->status == FR_OK)
     {
-        sprintf(str, "    N:         T(ms):    U(V): Usag(V):      I(A):  ESR(mO):   Temp(C):     Q(mAh):     E(Wh):  Qrem(mAh): Qmod(mAh):\r\n");
+        sprintf(str, "    N:         T(ms):    U(V): Usag(V):      I(A):  ESR(mO):   Temp(C):     Q(mAh):     E(Wh):  Qrem(mAh): Qmod(mAh):   Cycle:\r\n");
 
         uint32_t bytesWrote;
         file->status = f_write(&file->fil, str, strlen(str), (UINT*)&bytesWrote);
@@ -765,10 +771,8 @@ static void FileDataUpdate(file_t *file, timeUs_t time, float *fltData)
 {
     char str[32];
     char buf[256];
-    uint16_t data;
+    uint32_t data;
     char sign;
-
-    uint32_t bytesWrote;
 
     if (file->status != FR_OK)
     {
@@ -781,58 +785,64 @@ static void FileDataUpdate(file_t *file, timeUs_t time, float *fltData)
     strcat(buf, str);
 
     //vBat
-    data = (uint16_t)(fltData[1] * 10);
-    sprintf(str, "%2d.%1d     ", data/10, data % 10);
+    data = (uint32_t)(fltData[1] * 10);
+    sprintf(str, "%2lu.%1lu     ", data/10, data % 10);
     strcat(buf, str);
 
     //vRest
-    data = (uint16_t)(fltData[7] * 10);
-    sprintf(str, "%2d.%1d     ", data/10, data % 10);
+    data = (uint32_t)(fltData[7] * 10);
+    sprintf(str, "%2lu.%1lu     ", data/10, data % 10);
     strcat(buf, str);
 
     //iBat
-    data = (uint16_t)(fabs(fltData[0]) * 100);
-    sign  = (fltData[0] < 0) ? '-': '+';
-    sprintf(str, "%c%2d.%02d     ", sign, data/100, data % 100);
+    data = (uint32_t)(fabs(fltData[0]) * 100);
+    sign  = (fltData[0] < 0) ? '-': ' ';
+    sprintf(str, "%c%2lu.%02lu     ", sign, data/100, data % 100);
     strcat(buf, str);
 
     //Battery Impedance
-    data = (uint16_t)(fltData[4] * 10000);
-    sprintf(str, "%3d.%1d     ", data/10, data % 10);
+    data = (uint32_t)(fltData[4] * 10000);
+    sprintf(str, "%3lu.%1lu     ", data/10, data % 10);
     strcat(buf, str);
 
     //Battery temperature
-    sign  = (fltData[8] < 0) ? '-': '+';
-    data = (uint16_t)(fltData[8] * 10);
-    sprintf(str, "%c%3d.%1d     ", sign, data/10, data % 10);
+    sign  = (fltData[8] < 0) ? '-': ' ';
+    data = (uint32_t)(fabs(fltData[8]) * 10);
+    sprintf(str, "%c%3lu.%1lu     ", sign, data/10, data % 10);
     strcat(buf, str);
 
     //Capacity mAh
-    sign  = (fltData[2] < 0) ? '-': '+';
-    data = (uint16_t)(fabs(fltData[2]) * 10);
-    sprintf(str, "%c%4d.%1d     ", sign, data/10, data % 10);
+    sign  = (fltData[2] < 0) ? '-': ' ';
+    data = (uint32_t)(fabs(fltData[2]) * 10);
+    sprintf(str, "%c%4lu.%1lu     ", sign, data/10, data % 10);
     strcat(buf, str);
 
     //Capacity Wh
-    sign  = (fltData[3] < 0) ? '-': '+';
-    data = (uint16_t)(fabs(fltData[3]) * 100);
-    sprintf(str, "%c%2d.%02d     ", sign, data/100, data % 100);
+    sign  = (fltData[3] < 0) ? '-': ' ';
+    data = (uint32_t)(fabs(fltData[3]) * 100);
+    sprintf(str, "%c%2lu.%02lu     ", sign, data/100, data % 100);
     strcat(buf, str);
 
     //Remaining capacity mAh
-    sign  = (fltData[5] < 0) ? '-': '+';
-    data = (uint16_t)(fabs(fltData[5]) * 10);
-    sprintf(str, "%c%4d.%1d     ", sign, data/10, data % 10);
+    sign  = (fltData[5] < 0) ? '-': ' ';
+    data = (uint32_t)(fabs(fltData[5]) * 10);
+    sprintf(str, "%c%4lu.%1lu     ", sign, data/10, data % 10);
     strcat(buf, str);
 
     //Capacity module
-    data = (uint16_t)(fabs(fltData[6]) * 10);
-    sprintf(str, "%4d.%1d     ", data/10, data % 10);
+    data = (uint32_t)(fabs(fltData[6]) * 10);
+    sprintf(str, "%4lu.%1lu     ", data/10, data % 10);
+    strcat(buf, str);
+
+    //LifeCycles
+    data = (uint32_t)fltData[9];
+    sprintf(str, "%4lu     ", data);
     strcat(buf, str);
 
     sprintf(str, "\r\n");
     strcat(buf, str);
 
+    uint32_t bytesWrote;
     file->status = f_write(&file->fil, buf, strlen(buf), (UINT*)&bytesWrote);
 }
 
