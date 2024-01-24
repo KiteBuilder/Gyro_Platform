@@ -131,7 +131,7 @@ const uint16_t guard_threshold = 500;
 uint16_t x, y;
 uint8_t txt_wnd_num = 0;
 
-const uint16_t data_num = 10;
+const uint16_t data_num = 11;
 float fltData[RX_MAX_CNT/sizeof(float)] = {0.0};
 
 file_t file;
@@ -694,10 +694,11 @@ static void GraphsAndTextUpdate(timeDelta_t dT, float *flt_data)
         sprintf(str, "t%c%2lu.%1lu", sign, data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Olive, Black);
 
-        //Capacity module
-        point.x = Font_16x26.width * 13; point.y = 0;
-        data = (uint32_t)(fabs(fltData[6]) * 10);
-        sprintf(str, "M%4lu.%1lu", data/10, data % 10);
+        //Remaining capacity Wh
+        point.x = Font_16x26.width * 12; point.y = 0;
+        sign  = (fltData[10] < 0) ? '-': ' ';
+        data = (uint32_t)(fabs(fltData[10]) * 100);
+        sprintf(str, "%c%2lu.%02luWh", sign, data/100, data % 100);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Purple, Black);
 
         //Remaining capacity mAh
@@ -706,6 +707,13 @@ static void GraphsAndTextUpdate(timeDelta_t dT, float *flt_data)
         data = (uint32_t)(fabs(fltData[5]) * 10);
         sprintf(str, "%c%4lu.%1lumAh", sign, data/10, data % 10);
         ILI9341_WriteString(str, Font_16x26, point.x, point.y, Cyan, Black);
+
+
+        //Capacity module
+/*        point.x = Font_16x26.width * 13; point.y = 0;
+        data = (uint32_t)(fabs(fltData[6]) * 10);
+        sprintf(str, "M%4lu.%1lu", data/10, data % 10);
+        ILI9341_WriteString(str, Font_16x26, point.x, point.y, Purple, Black);*/
     }
 
     int16_t iFilt_int = (int16_t)(filter.state * 100);
@@ -755,7 +763,7 @@ static void InitFileSystem(file_t *file)
 
     if (file->status == FR_OK)
     {
-        sprintf(str, "    N:         T(ms):    U(V): Usag(V):      I(A):  ESR(mO):   Temp(C):     Q(mAh):     E(Wh):  Qrem(mAh): Qmod(mAh):   Cycle:\r\n");
+        sprintf(str, "    N:         T(ms):    U(V): Usag(V):      I(A):  ESR(mO):   Temp(C):     Q(mAh):     E(Wh):  Qrem(mAh):  Erem(Wh): Qmod(mAh):   Cycle:\r\n");
 
         uint32_t bytesWrote;
         file->status = f_write(&file->fil, str, strlen(str), (UINT*)&bytesWrote);
@@ -827,6 +835,12 @@ static void FileDataUpdate(file_t *file, timeUs_t time, float *fltData)
     sign  = (fltData[5] < 0) ? '-': ' ';
     data = (uint32_t)(fabs(fltData[5]) * 10);
     sprintf(str, "%c%4lu.%1lu     ", sign, data/10, data % 10);
+    strcat(buf, str);
+
+    //Remaining capacity Wh
+    sign  = (fltData[10] < 0) ? '-': ' ';
+    data = (uint32_t)(fabs(fltData[10]) * 100);
+    sprintf(str, "%c%2lu.%02lu     ", sign, data/100, data % 100);
     strcat(buf, str);
 
     //Capacity module
