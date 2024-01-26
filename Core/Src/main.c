@@ -592,7 +592,7 @@ static void InitGraphInterface()
     const uint16_t y_offset= 70;
 
     vBat_hdr.x = 10; vBat_hdr.y = y_offset - Font_7x10.height;
-    sprintf(str, "iBat(0-30)A");
+    sprintf(str, "iBat(-5-25)A");
     ILI9341_WriteString(str, Font_7x10, vBat_hdr.x, vBat_hdr.y, Yellow, Red);
 
     iBat_hdr.x = 100; iBat_hdr.y = y_offset - Font_7x10.height;
@@ -607,8 +607,8 @@ static void InitGraphInterface()
     iBat_wnd.top    = y_offset;
     iBat_wnd.right  = 318;
     iBat_wnd.bottom = iBat_wnd.top + wnd_height;
-    Graph_InitDynamic(&iBat_wnd, &iFilt_graph, 0, 3000, Yellow, Black);
-    Graph_InitDynamic(&iBat_wnd, &iBat_graph, 0, 3000, Red, Black);
+    Graph_InitDynamic(&iBat_wnd, &iFilt_graph, -500, 2500, Yellow, Black);
+    Graph_InitDynamic(&iBat_wnd, &iBat_graph, -500, 2500, Red, Black);
 
     vBat_wnd.left   = 1;
     vBat_wnd.top    = iBat_wnd.bottom + 5;
